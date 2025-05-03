@@ -6,9 +6,14 @@ import { Search } from 'lucide-react';
 interface SearchBarProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  placeholder?: string;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({ searchQuery, setSearchQuery }) => {
+const SearchBar: React.FC<SearchBarProps> = ({ 
+  searchQuery, 
+  setSearchQuery, 
+  placeholder = "Search by company name or industry..." 
+}) => {
   return (
     <div className="relative mb-6">
       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -16,7 +21,7 @@ const SearchBar: React.FC<SearchBarProps> = ({ searchQuery, setSearchQuery }) =>
       </div>
       <Input
         type="text"
-        placeholder="Search by company name or industry..."
+        placeholder={placeholder}
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         className="pl-10"
