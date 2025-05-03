@@ -4,14 +4,31 @@ import { Navigate } from 'react-router-dom';
 import Layout from '../components/Layout';
 import CompanyCard from '../components/CompanyCard';
 import CompanyForm from '../components/CompanyForm';
-import { getCompanies, addCompany, updateCompany, deleteCompany } from '../services/companyService';
+import { 
+  getCompanies, 
+  getPaginatedCompanies, 
+  addCompany, 
+  updateCompany, 
+  deleteCompany,
+  searchPaginatedCompanies
+} from '../services/companyService';
 import { isAuthenticated } from '../services/authService';
-import { Company } from '../types';
+import { Company, PaginatedResponse } from '../types';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 import { Input } from '@/components/ui/input';
-import { Search } from 'lucide-react';
+import { 
+  Pagination, 
+  PaginationContent, 
+  PaginationEllipsis, 
+  PaginationItem, 
+  PaginationLink, 
+  PaginationNext, 
+  PaginationPrevious 
+} from '@/components/ui/pagination';
+
+const COMPANIES_PER_PAGE = 9; // Show 9 companies per page in admin panel
 
 const AdminPage: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -19,45 +36,53 @@ const AdminPage: React.FC = () => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filteredCompanies, setFilteredCompanies] = useState<Company[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCompanies, setTotalCompanies] = useState(0);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchCompanies = async () => {
-      setLoading(true);
-      try {
-        const data = await getCompanies();
-        setCompanies(data);
-        setFilteredCompanies(data);
-      } catch (error) {
-        console.error('Failed to fetch companies:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load companies data',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
+  const fetchPaginatedCompanies = async (page: number, query: string = '') => {
+    setLoading(true);
+    try {
+      let response: PaginatedResponse<Company>;
+      
+      if (query.trim()) {
+        response = await searchPaginatedCompanies(query, { page, limit: COMPANIES_PER_PAGE });
+      } else {
+        response = await getPaginatedCompanies({ page, limit: COMPANIES_PER_PAGE });
       }
+      
+      setCompanies(response.data);
+      setTotalPages(response.totalPages);
+      setTotalCompanies(response.total);
+    } catch (error) {
+      console.error('Failed to fetch companies:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load companies data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPaginatedCompanies(currentPage);
+  }, [currentPage]);
+
+  useEffect(() => {
+    const handleSearch = async () => {
+      setCurrentPage(1);
+      await fetchPaginatedCompanies(1, searchQuery);
     };
 
-    fetchCompanies();
-  }, []);
+    const debounce = setTimeout(() => {
+      handleSearch();
+    }, 300);
 
-  useEffect(() => {
-    // Filter companies based on search query
-    if (searchQuery.trim() === '') {
-      setFilteredCompanies(companies);
-    } else {
-      const query = searchQuery.toLowerCase();
-      const filtered = companies.filter(
-        company => 
-          company.name.toLowerCase().includes(query) || 
-          company.sector.toLowerCase().includes(query)
-      );
-      setFilteredCompanies(filtered);
-    }
-  }, [searchQuery, companies]);
+    return () => clearTimeout(debounce);
+  }, [searchQuery]);
 
   const handleAddClick = () => {
     setSelectedCompany(null);
@@ -74,7 +99,10 @@ const AdminPage: React.FC = () => {
       setLoading(true);
       try {
         await deleteCompany(id);
-        setCompanies(companies.filter(company => company.id !== id));
+        await fetchPaginatedCompanies(
+          companies.length === 1 && currentPage > 1 ? currentPage - 1 : currentPage,
+          searchQuery
+        );
         toast({
           title: 'Success',
           description: 'Company deleted successfully',
@@ -98,7 +126,7 @@ const AdminPage: React.FC = () => {
       if (companyData.id) {
         // Update existing company
         const updated = await updateCompany(companyData.id, companyData);
-        setCompanies(companies.map(c => (c.id === updated.id ? updated : c)));
+        await fetchPaginatedCompanies(currentPage, searchQuery);
         toast({
           title: 'Success',
           description: 'Company updated successfully',
@@ -106,7 +134,8 @@ const AdminPage: React.FC = () => {
       } else {
         // Add new company
         const newCompany = await addCompany(companyData);
-        setCompanies([...companies, newCompany]);
+        await fetchPaginatedCompanies(1, searchQuery);
+        setCurrentPage(1); // Go to first page after adding
         toast({
           title: 'Success',
           description: 'Company added successfully',
@@ -123,6 +152,92 @@ const AdminPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <Pagination className="mt-8">
+        <PaginationContent>
+          {currentPage > 1 && (
+            <PaginationItem>
+              <PaginationPrevious onClick={() => handlePageChange(currentPage - 1)} />
+            </PaginationItem>
+          )}
+          
+          {[...Array(Math.min(totalPages, 5))].map((_, i) => {
+            let pageNumber: number;
+            
+            if (totalPages <= 5) {
+              pageNumber = i + 1;
+            } else if (currentPage <= 3) {
+              pageNumber = i + 1;
+              if (i === 4) return (
+                <PaginationItem key={i}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              );
+            } else if (currentPage >= totalPages - 2) {
+              pageNumber = totalPages - 4 + i;
+              if (i === 0) return (
+                <PaginationItem key={i}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              );
+            } else {
+              if (i === 0) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationLink onClick={() => handlePageChange(1)}>1</PaginationLink>
+                  </PaginationItem>
+                );
+              } else if (i === 1) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              } else if (i === 3) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              } else if (i === 4) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationLink onClick={() => handlePageChange(totalPages)}>{totalPages}</PaginationLink>
+                  </PaginationItem>
+                );
+              }
+              pageNumber = currentPage + (i - 2);
+            }
+            
+            return (
+              <PaginationItem key={i}>
+                <PaginationLink 
+                  isActive={pageNumber === currentPage} 
+                  onClick={() => handlePageChange(pageNumber)}
+                >
+                  {pageNumber}
+                </PaginationLink>
+              </PaginationItem>
+            );
+          })}
+          
+          {currentPage < totalPages && (
+            <PaginationItem>
+              <PaginationNext onClick={() => handlePageChange(currentPage + 1)} />
+            </PaginationItem>
+          )}
+        </PaginationContent>
+      </Pagination>
+    );
   };
 
   if (!isAuthenticated()) {
@@ -151,13 +266,20 @@ const AdminPage: React.FC = () => {
           </Button>
         </div>
 
+        {/* Result summary */}
+        {!loading && totalCompanies > 0 && (
+          <div className="text-sm text-gray-600">
+            Showing {companies.length} of {totalCompanies} companies
+          </div>
+        )}
+
         {loading && !formOpen ? (
           <div className="flex justify-center py-10">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
-        ) : filteredCompanies.length > 0 ? (
+        ) : companies.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredCompanies.map((company) => (
+            {companies.map((company) => (
               <CompanyCard 
                 key={company.id} 
                 company={company} 
@@ -172,6 +294,9 @@ const AdminPage: React.FC = () => {
             <p className="text-gray-500">No companies found.</p>
           </div>
         )}
+
+        {/* Pagination */}
+        {renderPagination()}
       </div>
 
       <CompanyForm 

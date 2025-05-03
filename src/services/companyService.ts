@@ -1,5 +1,5 @@
 
-import { Company } from '../types';
+import { Company, PaginatedResponse, PaginationParams } from '../types';
 import { sampleCompanies } from '../data/companies';
 
 // In a real application, these would be API calls to your backend
@@ -14,6 +14,28 @@ export const getCompanies = async (): Promise<Company[]> => {
   return [...companies];
 };
 
+export const getPaginatedCompanies = async (
+  params: PaginationParams
+): Promise<PaginatedResponse<Company>> => {
+  await delay(500); // Simulate network delay
+  
+  const { page, limit } = params;
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  
+  const paginatedData = companies.slice(startIndex, endIndex);
+  const total = companies.length;
+  const totalPages = Math.ceil(total / limit);
+  
+  return {
+    data: paginatedData,
+    total,
+    page,
+    limit,
+    totalPages
+  };
+};
+
 export const searchCompanies = async (query: string): Promise<Company[]> => {
   await delay(300);
   const lowerQuery = query.toLowerCase();
@@ -22,6 +44,36 @@ export const searchCompanies = async (query: string): Promise<Company[]> => {
       company.name.toLowerCase().includes(lowerQuery) || 
       company.sector.toLowerCase().includes(lowerQuery)
   );
+};
+
+export const searchPaginatedCompanies = async (
+  query: string,
+  params: PaginationParams
+): Promise<PaginatedResponse<Company>> => {
+  await delay(300);
+  
+  const lowerQuery = query.toLowerCase();
+  const filteredCompanies = companies.filter(
+    company => 
+      company.name.toLowerCase().includes(lowerQuery) || 
+      company.sector.toLowerCase().includes(lowerQuery)
+  );
+  
+  const { page, limit } = params;
+  const startIndex = (page - 1) * limit;
+  const endIndex = startIndex + limit;
+  
+  const paginatedData = filteredCompanies.slice(startIndex, endIndex);
+  const total = filteredCompanies.length;
+  const totalPages = Math.ceil(total / limit);
+  
+  return {
+    data: paginatedData,
+    total,
+    page,
+    limit,
+    totalPages
+  };
 };
 
 export const addCompany = async (company: Omit<Company, 'id'>): Promise<Company> => {

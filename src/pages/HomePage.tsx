@@ -2,56 +2,66 @@
 import React, { useEffect, useState } from 'react';
 import Layout from '../components/Layout';
 import CompanyCard from '../components/CompanyCard';
-import { getCompanies, searchCompanies } from '../services/companyService';
-import { Company } from '../types';
+import { getCompanies, getPaginatedCompanies, searchCompanies, searchPaginatedCompanies } from '../services/companyService';
+import { Company, PaginatedResponse } from '../types';
 import { Input } from '@/components/ui/input';
 import { Search } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
+import { 
+  Pagination, 
+  PaginationContent, 
+  PaginationEllipsis, 
+  PaginationItem, 
+  PaginationLink, 
+  PaginationNext, 
+  PaginationPrevious 
+} from '@/components/ui/pagination';
+
+const COMPANIES_PER_PAGE = 6; // Show 6 companies per page
 
 const HomePage: React.FC = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCompanies, setTotalCompanies] = useState(0);
   const { toast } = useToast();
 
-  useEffect(() => {
-    const fetchCompanies = async () => {
-      setLoading(true);
-      try {
-        const data = await getCompanies();
-        setCompanies(data);
-      } catch (error) {
-        console.error('Failed to fetch companies:', error);
-        toast({
-          title: 'Error',
-          description: 'Failed to load companies data',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
+  const fetchPaginatedCompanies = async (page: number, query: string = '') => {
+    setLoading(true);
+    try {
+      let response: PaginatedResponse<Company>;
+      
+      if (query.trim()) {
+        response = await searchPaginatedCompanies(query, { page, limit: COMPANIES_PER_PAGE });
+      } else {
+        response = await getPaginatedCompanies({ page, limit: COMPANIES_PER_PAGE });
       }
-    };
+      
+      setCompanies(response.data);
+      setTotalPages(response.totalPages);
+      setTotalCompanies(response.total);
+    } catch (error) {
+      console.error('Failed to fetch companies:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to load companies data',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchCompanies();
-  }, []);
+  useEffect(() => {
+    fetchPaginatedCompanies(currentPage);
+  }, [currentPage]);
 
   useEffect(() => {
     const handleSearch = async () => {
-      if (!searchQuery.trim()) {
-        const data = await getCompanies();
-        setCompanies(data);
-        return;
-      }
-
-      setLoading(true);
-      try {
-        const results = await searchCompanies(searchQuery);
-        setCompanies(results);
-      } catch (error) {
-        console.error('Search failed:', error);
-      } finally {
-        setLoading(false);
-      }
+      setCurrentPage(1);
+      await fetchPaginatedCompanies(1, searchQuery);
     };
 
     const debounce = setTimeout(() => {
@@ -60,6 +70,92 @@ const HomePage: React.FC = () => {
 
     return () => clearTimeout(debounce);
   }, [searchQuery]);
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+  };
+
+  const renderPagination = () => {
+    if (totalPages <= 1) return null;
+
+    return (
+      <Pagination className="mt-8">
+        <PaginationContent>
+          {currentPage > 1 && (
+            <PaginationItem>
+              <PaginationPrevious onClick={() => handlePageChange(currentPage - 1)} />
+            </PaginationItem>
+          )}
+          
+          {[...Array(Math.min(totalPages, 5))].map((_, i) => {
+            let pageNumber: number;
+            
+            if (totalPages <= 5) {
+              pageNumber = i + 1;
+            } else if (currentPage <= 3) {
+              pageNumber = i + 1;
+              if (i === 4) return (
+                <PaginationItem key={i}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              );
+            } else if (currentPage >= totalPages - 2) {
+              pageNumber = totalPages - 4 + i;
+              if (i === 0) return (
+                <PaginationItem key={i}>
+                  <PaginationEllipsis />
+                </PaginationItem>
+              );
+            } else {
+              if (i === 0) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationLink onClick={() => handlePageChange(1)}>1</PaginationLink>
+                  </PaginationItem>
+                );
+              } else if (i === 1) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              } else if (i === 3) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationEllipsis />
+                  </PaginationItem>
+                );
+              } else if (i === 4) {
+                return (
+                  <PaginationItem key={i}>
+                    <PaginationLink onClick={() => handlePageChange(totalPages)}>{totalPages}</PaginationLink>
+                  </PaginationItem>
+                );
+              }
+              pageNumber = currentPage + (i - 2);
+            }
+            
+            return (
+              <PaginationItem key={i}>
+                <PaginationLink 
+                  isActive={pageNumber === currentPage} 
+                  onClick={() => handlePageChange(pageNumber)}
+                >
+                  {pageNumber}
+                </PaginationLink>
+              </PaginationItem>
+            );
+          })}
+          
+          {currentPage < totalPages && (
+            <PaginationItem>
+              <PaginationNext onClick={() => handlePageChange(currentPage + 1)} />
+            </PaginationItem>
+          )}
+        </PaginationContent>
+      </Pagination>
+    );
+  };
 
   return (
     <Layout title="Top Bangladeshi Companies">
@@ -78,6 +174,13 @@ const HomePage: React.FC = () => {
           />
         </div>
 
+        {/* Result summary */}
+        {!loading && totalCompanies > 0 && (
+          <div className="mb-4 text-sm text-gray-600">
+            Showing {companies.length} of {totalCompanies} companies
+          </div>
+        )}
+
         {/* Companies list */}
         {loading ? (
           <div className="flex justify-center py-10">
@@ -94,6 +197,9 @@ const HomePage: React.FC = () => {
             <p className="text-gray-500">No companies found.</p>
           </div>
         )}
+
+        {/* Pagination */}
+        {renderPagination()}
       </div>
     </Layout>
   );
