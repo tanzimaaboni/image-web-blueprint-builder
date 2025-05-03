@@ -4,6 +4,7 @@ export interface Company {
   name: string;
   sector: string;
   logo?: string;
+  logoUrl?: string; // Added for storing the original URL
   headquarters: string;
   founded: string;
   description?: string;

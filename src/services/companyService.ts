@@ -1,6 +1,7 @@
 
 import { Company, PaginatedResponse, PaginationParams } from '../types';
 import { sampleCompanies } from '../data/companies';
+import { fetchCompanyLogo } from '../utils/logoFetcher';
 
 // In a real application, these would be API calls to your backend
 
@@ -9,9 +10,24 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 let companies = [...sampleCompanies];
 
+// Helper to ensure companies have logos
+const ensureCompanyLogos = async (companiesToProcess: Company[]): Promise<Company[]> => {
+  const results = await Promise.all(
+    companiesToProcess.map(async (company) => {
+      if (!company.logo) {
+        const logo = await fetchCompanyLogo(company.name);
+        return { ...company, logo, logoUrl: logo };
+      }
+      return company;
+    })
+  );
+  return results;
+};
+
 export const getCompanies = async (): Promise<Company[]> => {
   await delay(500); // Simulate network delay
-  return [...companies];
+  const result = await ensureCompanyLogos([...companies]);
+  return result;
 };
 
 export const getPaginatedCompanies = async (
@@ -23,7 +39,9 @@ export const getPaginatedCompanies = async (
   const startIndex = (page - 1) * limit;
   const endIndex = startIndex + limit;
   
-  const paginatedData = companies.slice(startIndex, endIndex);
+  let paginatedData = companies.slice(startIndex, endIndex);
+  paginatedData = await ensureCompanyLogos(paginatedData);
+  
   const total = companies.length;
   const totalPages = Math.ceil(total / limit);
   
@@ -39,11 +57,12 @@ export const getPaginatedCompanies = async (
 export const searchCompanies = async (query: string): Promise<Company[]> => {
   await delay(300);
   const lowerQuery = query.toLowerCase();
-  return companies.filter(
+  const filtered = companies.filter(
     company => 
       company.name.toLowerCase().includes(lowerQuery) || 
       company.sector.toLowerCase().includes(lowerQuery)
   );
+  return ensureCompanyLogos(filtered);
 };
 
 export const searchPaginatedCompanies = async (
@@ -63,7 +82,9 @@ export const searchPaginatedCompanies = async (
   const startIndex = (page - 1) * limit;
   const endIndex = startIndex + limit;
   
-  const paginatedData = filteredCompanies.slice(startIndex, endIndex);
+  let paginatedData = filteredCompanies.slice(startIndex, endIndex);
+  paginatedData = await ensureCompanyLogos(paginatedData);
+  
   const total = filteredCompanies.length;
   const totalPages = Math.ceil(total / limit);
   
